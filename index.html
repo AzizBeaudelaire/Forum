@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Connexion et inscription</title>
+</head>
+<body>
+	<h1>Connexion</h1>
+	<form action="/login" method="post">
+		<label for="username">Nom d'utilisateur:</label>
+		<input type="text" id="username" name="username"><br><br>
+		<label for="password">Mot de passe:</label>
+		<input type="password" id="password" name="password"><br><br>
+		<input type="submit" value="Se connecter">
+	</form>
+
+	<h1>Inscription</h1>
+	<form action="/register" method="post">
+		<label for="username">Nom d'utilisateur:</label>
+		<input type="text" id="username" name="username"><br><br>
+		<label for="password">Mot de passe:</label>
+		<input type="password" id="password" name="password"><br><br>
+		<input type="submit" value="S'inscrire">
+	</form>
+
+	<h1>Authentification Google</h1>
+	<a href="/google-login">Se connecter avec Google</a>
+</body>
+</html>
