@@ -1,160 +1,131 @@
 package main
 
 import (
-	"encoding/json"
+	"database/sql"
+	"encoding/base64"
 	"fmt"
-	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
 
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
+	"github.com/gorilla/mux"
+	_ "github.com/mattn/go-sqlite3"
 )
 
-type User struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-var users []User
-
 func main() {
-	loadUsers()
+	db, err := sql.Open("sqlite3", "./data.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
 
-	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/login", loginHandler)
-	http.HandleFunc("/register", registerHandler)
-	http.HandleFunc("/dashboard", dashboardHandler)
-	http.HandleFunc("/google-login", handleGoogleLogin)
-	http.HandleFunc("/google-callback", handleGoogleCallback)
+	// Initialiser le routeur
+	r := mux.NewRouter()
+	fmt.Print("Écouter sur le port 8080...\n")
 
-	fmt.Println("Le serveur est en cours d'exécution sur http://localhost:8000")
-	http.ListenAndServe(":8000", nil)
-}
-
-func indexHandler(w http.ResponseWriter, r *http.Request) {
-	tmpl := template.Must(template.ParseFiles("index.html"))
-	tmpl.Execute(w, nil)
-}
-
-func loginHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
-		username := r.FormValue("username")
-		password := r.FormValue("password")
-
-		if isValidUser(username, password) {
-			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
-			return
-		} else {
-			fmt.Fprintf(w, "<p>Mauvais nom d'utilisateur ou mot de passe.</p>")
+	// Définir une route pour le fichier script.js
+	r.HandleFunc("/script.js", func(w http.ResponseWriter, r *http.Request) {
+		js, err := ioutil.ReadFile("script.js")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-	}
-
-	http.ServeFile(w, r, "index.html")
-}
-
-func registerHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
-		username := r.FormValue("username")
-		password := r.FormValue("password")
-
-		if !isExistingUser(username) {
-			users = append(users, User{Username: username, Password: password})
-			saveUsers()
-			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		w.Header().Set("Content-Type", "text/javascript")
+		fmt.Fprint(w, string(js))
+	})
+	r.HandleFunc("/changement_pdp.js", func(w http.ResponseWriter, r *http.Request) {
+		js, err := ioutil.ReadFile("changement_pdp.js")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-	}
+		w.Header().Set("Content-Type", "text/javascript")
+		fmt.Fprint(w, string(js))
+	})
+	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			html, err := ioutil.ReadFile("./templates/html/login_page.html")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			css, err := ioutil.ReadFile("templates/css/style.css")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			image, err := ioutil.ReadFile("./static/images/BG.jpg")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			fmt.Fprintf(w, "<html><head><title>Login Page</title><style>%s</style></head><body style=\"background-image: url('data:image/png;base64,%s')\">%s</body></html>", string(css), base64.StdEncoding.EncodeToString(image), string(html))
+		} else if r.Method == http.MethodPost {
+			file, _, err := r.FormFile("image")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			defer file.Close()
 
-	http.ServeFile(w, r, "index.html")
-}
-
-func dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	tmpl := template.Must(template.ParseFiles("dashboard.html"))
-	tmpl.Execute(w, nil)
-}
-
-func isValidUser(username, password string) bool {
-	for _, user := range users {
-		if user.Username == username && user.Password == password {
-			return true
+			fmt.Fprint(w, "Photo de profil mise à jour avec succès")
 		}
-	}
-	return false
-}
-
-func isExistingUser(username string) bool {
-	for _, user := range users {
-		if user.Username == username {
-			return true
+	})
+	// Définir une route pour la page d'accueil
+	r.HandleFunc("./templates/html/login_page.html", func(w http.ResponseWriter, r *http.Request) {
+		html, err := ioutil.ReadFile("./templates/html/error404.html")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
-	}
-	return false
-}
+		css, err := ioutil.ReadFile("./templates/css/styleError.css")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		image, err := ioutil.ReadFile("static/images/404-error-page-examples-best.jpg")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-func loadUsers() {
-	file, err := ioutil.ReadFile("users.json")
-	if err != nil {
-		return
-	}
-	json.Unmarshal(file, &users)
-}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, "<html><head><title>Error 404 page</title><style>%s</style></head><body style=\"background: url('data:image/jpg;base64,%s') no-repeat center center fixed; background-size: cover;\">%s</body></html>", string(css), base64.StdEncoding.EncodeToString(image), string(html))
 
-func saveUsers() {
-	file, _ := json.MarshalIndent(users, "", "  ")
-	_ = ioutil.WriteFile("users.json", file, 0644)
-}
+	})
+	// Définir une route pour récupérer les données de la base de données
+	r.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
+		rows, err := db.Query("SELECT * FROM users")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
 
-// Configuration OAuth2 pour Google
-var googleOauthConfig = &oauth2.Config{
-	ClientID:     "20636667204-7ga8gi3k8p48uedp4lr8ceok33b3ht6s.apps.googleusercontent.com",
-	ClientSecret: "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",
-	RedirectURL:  "http://localhost:8000/google-callback",
-	Scopes: []string{
-		"https://www.googleapis.com/auth/userinfo.email",
-	},
-	Endpoint: google.Endpoint,
-}
+		var (
+			id   int
+			name string
+		)
 
-func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
-	url := googleOauthConfig.AuthCodeURL("state")
-	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
-}
+		for rows.Next() {
+			err := rows.Scan(&id, &name)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			fmt.Fprintf(w, "ID: %d, Name: %s\n", id, name)
+		}
 
-func handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
-	code := r.FormValue("code")
-	token, err := googleOauthConfig.Exchange(oauth2.NoContext, code)
-	if err != nil {
-		log.Fatal(err)
-	}
+		if err := rows.Err(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
 
-	client := googleOauthConfig.Client(oauth2.NoContext, token)
-	response, err := client.Get("https://www.googleapis.com/userinfo/v2/me")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer response.Body.Close()
+	fs := http.FileServer(http.Dir("./templates/css/"))
+	r.PathPrefix("/templates/css/").Handler(http.StripPrefix("/templates/css/", fs))
 
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var userInfo struct {
-		Email string `json:"email"`
-	}
-
-	err = json.Unmarshal(data, &userInfo)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if isValidUser(userInfo.Email, "") {
-		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
-		return
-	}
-
-	fmt.Fprintf(w, "<p>Mauvaises informations d'identification.</p>")
+	fmt.Printf("Server is running on http://localhost:8080/\n")
+	log.Fatal(http.ListenAndServe(":8080", r))
 }
